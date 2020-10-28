@@ -1,6 +1,7 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
@@ -154,7 +155,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Conventions
             var index = indexBuilder.Metadata;
             if (index.IsUnique
                 && index.IsClustered() != true
-                && index.Properties.Any(property => property.IsColumnNullable()))
+                && GetNullableColumns(index)?.Any() == true)
             {
                 if (columnNameChanged
                     || index.GetFilter() == null)
@@ -175,18 +176,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Conventions
 
         private string CreateIndexFilter(IIndex index)
         {
-            var tableName = index.DeclaringEntityType.GetTableName();
-            if (tableName == null)
-            {
-                return null;
-            }
-
-            var table = StoreObjectIdentifier.Table(tableName, index.DeclaringEntityType.GetSchema());
-            var nullableColumns = index.Properties
-                .Where(property => property.IsColumnNullable(table))
-                .Select(property => property.GetColumnName(table))
-                .ToList();
-
+            var nullableColumns = GetNullableColumns(index);
             var builder = new StringBuilder();
             for (var i = 0; i < nullableColumns.Count; i++)
             {
@@ -201,6 +191,35 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Conventions
             }
 
             return builder.ToString();
+        }
+
+        private List<string> GetNullableColumns(IIndex index)
+        {
+            var tableName = index.DeclaringEntityType.GetTableName();
+            if (tableName == null)
+            {
+                return null;
+            }
+
+            var nullableColumns = new List<string>();
+            var table = StoreObjectIdentifier.Table(tableName, index.DeclaringEntityType.GetSchema());
+            foreach (var property in index.Properties)
+            {
+                var columnName = property.GetColumnName(table);
+                if (columnName == null)
+                {
+                    return null;
+                }
+
+                if (!property.IsColumnNullable(table))
+                {
+                    continue;
+                }
+
+                nullableColumns.Add(columnName);
+            }
+
+            return nullableColumns;
         }
     }
 }
